@@ -87,7 +87,7 @@ def join_room():
         data['pid_counter'] = pid_counter
         save_data(data)
     
-    return jsonify({'ok': True, 'room': room_code, 'pid': pid})
+    return jsonify({'ok': True, 'room': room_code, 'pid': pid, 'host': rooms[room_code]['host']})
 
 @app.route('/sync', methods=['POST'])
 def sync():
