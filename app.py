@@ -50,7 +50,7 @@ def create_room():
             'host': pid,
             'created': time.time(),
             'last_active': time.time(),
-            'enemies': [],  # 共享怪物列表
+            'enemies': [],
             'enemy_id_counter': 1,
             'game_started': False
         }
@@ -60,7 +60,7 @@ def create_room():
         data['pid_counter'] = pid_counter
         save_data(data)
     
-    return jsonify({'ok': True, 'room': room_code, 'pid': pid})
+    return jsonify({'ok': True, 'room': room_code, 'pid': pid, 'host': pid})
 
 @app.route('/join', methods=['POST'])
 def join_room():
@@ -118,11 +118,9 @@ def sync():
         
         # 游戏开始后自动生成怪物
         if room['game_started']:
-            # 每同步几次生成一个新怪
             if random.random() < 0.1 and len(room['enemies']) < 50:
                 eid = str(room['enemy_id_counter'])
                 room['enemy_id_counter'] += 1
-                # 在玩家附近随机生成怪物
                 px = player['x']
                 py = player['y']
                 ex = px + random.randint(-300, 300)
@@ -135,14 +133,13 @@ def sync():
                     'size': 20,
                     'kind': 'normal'
                 })
-            
-            # 清理死亡的怪物
             room['enemies'] = [e for e in room['enemies'] if e['hp'] > 0]
         
         # 给每个玩家数据加上 is_host 标记
         players = {}
         for ppid, pinfo in room['players'].items():
             players[ppid] = {**pinfo, 'is_host': (ppid == room['host'])}
+        
         enemies = room['enemies']
         data['rooms'] = rooms
         save_data(data)
@@ -159,9 +156,9 @@ def start_game():
         if room_code not in rooms or pid not in rooms[room_code]['players']:
             return jsonify({'ok': False, 'err': '不在房间'})
         
-        # 检查是否全部准备
         room = rooms[room_code]
-        all_ready = all(p.get('ready', False) for p in room['players'].values())
+        # 房主默认已准备好，只检查成员是否都准备好
+        all_ready = all(p.get('ready', False) for pid, p in room['players'].items() if pid != room['host'])
         if not all_ready:
             return jsonify({'ok': False, 'err': '还有玩家没准备'})
         
@@ -182,13 +179,10 @@ def kill_enemy():
             return jsonify({'ok': False, 'err': '房间不存在'})
         
         room = rooms[room_code]
-        # 扣怪物血
         for e in room['enemies']:
             if e['id'] == enemy_id:
                 e['hp'] -= 10
                 break
-        
-        # 清理死亡的怪物
         room['enemies'] = [e for e in room['enemies'] if e['hp'] > 0]
         data['rooms'] = rooms
         save_data(data)
@@ -220,7 +214,6 @@ def admin_page():
 @app.route('/admin/api/stats')
 def admin_stats():
     with lock:
-        # 只统计最近5分钟活跃的房间
         now = time.time()
         active_rooms = {rc: r for rc, r in rooms.items() if now - r.get('last_active', 0) < 300}
         online = sum(len(r['players']) for r in active_rooms.values())
@@ -267,5 +260,5 @@ def admin_unban():
     return jsonify({'ok': True})
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 7860))
+    port = int(os.environ.get('PORT', 30470))
     app.run(host='0.0.0.0', port=port)
