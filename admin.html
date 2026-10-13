@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>生存代码 - 管理后台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0a0a1a; color: #fff; font-family: 'Microsoft YaHei', sans-serif; padding: 20px; }
+        h1 { color: #0ff; text-align: center; margin-bottom: 30px; }
+        .stats { display: flex; gap: 20px; justify-content: center; margin-bottom: 30px; }
+        .stat-card { background: #1a1a3a; padding: 20px 40px; border-radius: 10px; text-align: center; border: 1px solid #0ff; }
+        .stat-card .num { font-size: 36px; color: #ff0; font-weight: bold; }
+        .stat-card .label { font-size: 14px; color: #888; margin-top: 5px; }
+        table { width: 100%; max-width: 800px; margin: 0 auto; border-collapse: collapse; background: #1a1a3a; border-radius: 10px; overflow: hidden; }
+        th { background: #2a2a5a; padding: 12px; text-align: left; color: #0ff; }
+        td { padding: 12px; border-bottom: 1px solid #333; }
+        tr:hover { background: #2a2a4a; }
+        .ban-btn { background: #f44; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+        .ban-btn:hover { background: #f66; }
+        .unban-btn { background: #4f4; color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; }
+        .unban-btn:hover { background: #6f6; }
+        .banned-tag { color: #f44; font-weight: bold; }
+        .normal-tag { color: #4f4; }
+        .refresh { text-align: center; margin-top: 20px; }
+        .refresh button { background: #0ff; color: #000; border: none; padding: 10px 30px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <h1>🎮 生存代码 - 管理后台</h1>
+    
+    <div class="stats">
+        <div class="stat-card">
+            <div class="num" id="online">0</div>
+            <div class="label">在线玩家</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" id="rooms">0</div>
+            <div class="label">活跃房间</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" id="total">0</div>
+            <div class="label">总用户数</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" id="banned">0</div>
+            <div class="label">封禁数</div>
+        </div>
+    </div>
+
+    <h2 style="text-align: center; margin-bottom: 20px;">玩家列表</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>用户名</th>
+                <th>最后在线</th>
+                <th>所在房间</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="user-list">
+        </tbody>
+    </table>
+
+    <div class="refresh">
+        <button onclick="loadData()">刷新数据</button>
+    </div>
+
+    <script>
+        async function loadData() {
+            // 加载统计
+            const stats = await fetch('/admin/api/stats').then(r => r.json());
+            document.getElementById('online').textContent = stats.online_players;
+            document.getElementById('rooms').textContent = stats.active_rooms;
+            document.getElementById('total').textContent = stats.total_users;
+            document.getElementById('banned').textContent = stats.banned_count;
+
+            // 加载用户列表
+            const users = await fetch('/admin/api/users').then(r => r.json());
+            const tbody = document.getElementById('user-list');
+            tbody.innerHTML = '';
+            users.forEach(u => {
+                const tr = document.createElement('tr');
+                const time = new Date(u.last_online * 1000).toLocaleString();
+                tr.innerHTML = `
+                    <td>${u.name}</td>
+                    <td>${time}</td>
+                    <td>${u.room || '-'}</td>
+                    <td>${u.banned ? '<span class="banned-tag">已封禁</span>' : '<span class="normal-tag">正常</span>'}</td>
+                    <td>${u.banned 
+                        ? '<button class="unban-btn" onclick="unban(\'' + u.name + '\')">解封</button>' 
+                        : '<button class="ban-btn" onclick="ban(\'' + u.name + '\')">封禁</button>'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function ban(name) {
+            await fetch('/admin/api/ban', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name})
+            });
+            loadData();
+        }
+
+        async function unban(name) {
+            await fetch('/admin/api/unban', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name})
+            });
+            loadData();
+        }
+
+        // 自动刷新
+        loadData();
+        setInterval(loadData, 5000);
+    </script>
+</body>
+</html>
