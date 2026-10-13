@@ -136,7 +136,7 @@ def sync():
         data['rooms'] = rooms
         save_data(data)
     
-    return jsonify({'ok': True, 'players': players, 'enemies': enemies, 'game_started': room['game_started']})
+    return jsonify({'ok': True, 'players': players, 'enemies': enemies, 'game_started': room['game_started'], 'host': room['host']})
 
 @app.route('/start_game', methods=['POST'])
 def start_game():
