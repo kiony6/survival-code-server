@@ -46,9 +46,12 @@ def create_room():
         while room_code in rooms:
             room_code = str(random.randint(100000, 999999))
         rooms[room_code] = {
-            'players': {pid: {'name': name, 'ready': False, 'x': 0, 'y': 0}},
+            'players': {pid: {'name': name, 'ready': False, 'x': 400, 'y': 300, 'hp': 100, 'kills': 0}},
             'host': pid,
-            'created': time.time()
+            'created': time.time(),
+            'enemies': [],  # 共享怪物列表
+            'enemy_id_counter': 1,
+            'game_started': False
         }
         users[name] = {'last_online': time.time(), 'room': room_code}
         data['rooms'] = rooms
@@ -76,7 +79,7 @@ def join_room():
         
         pid = str(pid_counter)
         pid_counter += 1
-        rooms[room_code]['players'][pid] = {'name': name, 'ready': False, 'x': 0, 'y': 0}
+        rooms[room_code]['players'][pid] = {'name': name, 'ready': False, 'x': 400, 'y': 300, 'hp': 100, 'kills': 0}
         users[name] = {'last_online': time.time(), 'room': room_code}
         data['rooms'] = rooms
         data['users'] = users
@@ -95,14 +98,91 @@ def sync():
         if room_code not in rooms or pid not in rooms[room_code]['players']:
             return jsonify({'ok': False, 'err': '不在房间'})
         
-        rooms[room_code]['players'][pid]['ready'] = d.get('ready', False)
-        rooms[room_code]['players'][pid]['x'] = d.get('x', 0)
-        rooms[room_code]['players'][pid]['y'] = d.get('y', 0)
-        players = rooms[room_code]['players']
+        room = rooms[room_code]
+        player = room['players'][pid]
+        
+        # 更新玩家状态
+        player['ready'] = d.get('ready', False)
+        player['x'] = d.get('x', 0)
+        player['y'] = d.get('y', 0)
+        player['hp'] = d.get('hp', 100)
+        player['kills'] = d.get('kills', 0)
+        
+        # 游戏开始后自动生成怪物
+        if room['game_started']:
+            # 每同步几次生成一个新怪
+            if random.random() < 0.1 and len(room['enemies']) < 50:
+                eid = str(room['enemy_id_counter'])
+                room['enemy_id_counter'] += 1
+                # 在玩家附近随机生成怪物
+                px = player['x']
+                py = player['y']
+                ex = px + random.randint(-300, 300)
+                ey = py + random.randint(-300, 300)
+                room['enemies'].append({
+                    'id': eid,
+                    'x': ex,
+                    'y': ey,
+                    'hp': 20,
+                    'size': 20,
+                    'kind': 'normal'
+                })
+            
+            # 清理死亡的怪物
+            room['enemies'] = [e for e in room['enemies'] if e['hp'] > 0]
+        
+        players = room['players']
+        enemies = room['enemies']
         data['rooms'] = rooms
         save_data(data)
     
-    return jsonify({'ok': True, 'players': players})
+    return jsonify({'ok': True, 'players': players, 'enemies': enemies})
+
+@app.route('/start_game', methods=['POST'])
+def start_game():
+    d = request.json or {}
+    room_code = d.get('room', '')
+    pid = d.get('pid', '')
+    
+    with lock:
+        if room_code not in rooms or pid not in rooms[room_code]['players']:
+            return jsonify({'ok': False, 'err': '不在房间'})
+        
+        # 检查是否全部准备
+        room = rooms[room_code]
+        all_ready = all(p.get('ready', False) for p in room['players'].values())
+        if not all_ready:
+            return jsonify({'ok': False, 'err': '还有玩家没准备'})
+        
+        room['game_started'] = True
+        data['rooms'] = rooms
+        save_data(data)
+    
+    return jsonify({'ok': True})
+
+@app.route('/kill_enemy', methods=['POST'])
+def kill_enemy():
+    d = request.json or {}
+    room_code = d.get('room', '')
+    enemy_id = d.get('enemy_id', '')
+    
+    with lock:
+        if room_code not in rooms:
+            return jsonify({'ok': False, 'err': '房间不存在'})
+        
+        room = rooms[room_code]
+        # 扣怪物血
+        for e in room['enemies']:
+            if e['id'] == enemy_id:
+                e['hp'] -= 10
+                break
+        
+        # 清理死亡的怪物
+        room['enemies'] = [e for e in room['enemies'] if e['hp'] > 0]
+        data['rooms'] = rooms
+        save_data(data)
+    
+    return jsonify({'ok': True})
 
 @app.route('/leave', methods=['POST'])
 def leave():
