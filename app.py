@@ -139,7 +139,10 @@ def sync():
             # 清理死亡的怪物
             room['enemies'] = [e for e in room['enemies'] if e['hp'] > 0]
         
-        players = room['players']
+        # 给每个玩家数据加上 is_host 标记
+        players = {}
+        for ppid, pinfo in room['players'].items():
+            players[ppid] = {**pinfo, 'is_host': (ppid == room['host'])}
         enemies = room['enemies']
         data['rooms'] = rooms
         save_data(data)
