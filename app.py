@@ -49,6 +49,7 @@ def create_room():
             'players': {pid: {'name': name, 'ready': False, 'x': 400, 'y': 300, 'hp': 100, 'kills': 0}},
             'host': pid,
             'created': time.time(),
+            'last_active': time.time(),
             'enemies': [],  # 共享怪物列表
             'enemy_id_counter': 1,
             'game_started': False
@@ -95,10 +96,17 @@ def sync():
     pid = d.get('pid', '')
     
     with lock:
+        # 清理超过30分钟没活动的房间
+        now = time.time()
+        expired = [rc for rc, r in rooms.items() if now - r.get('last_active', r.get('created', 0)) > 1800]
+        for rc in expired:
+            del rooms[rc]
+        
         if room_code not in rooms or pid not in rooms[room_code]['players']:
             return jsonify({'ok': False, 'err': '不在房间'})
         
         room = rooms[room_code]
+        room['last_active'] = now
         player = room['players'][pid]
         
         # 更新玩家状态
@@ -209,11 +217,14 @@ def admin_page():
 @app.route('/admin/api/stats')
 def admin_stats():
     with lock:
-        online = sum(len(r['players']) for r in rooms.values())
+        # 只统计最近5分钟活跃的房间
+        now = time.time()
+        active_rooms = {rc: r for rc, r in rooms.items() if now - r.get('last_active', 0) < 300}
+        online = sum(len(r['players']) for r in active_rooms.values())
         return jsonify({
             'online_players': online,
             'total_users': len(users),
-            'active_rooms': len(rooms),
+            'active_rooms': len(active_rooms),
             'banned_count': len(banned),
             'banned_list': banned
         })
